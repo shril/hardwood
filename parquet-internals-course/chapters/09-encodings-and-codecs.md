@@ -238,11 +238,13 @@ checked at runtime where required.
 | `DELTA_LENGTH_BYTE_ARRAY` | byte-array values |
 | `DELTA_BYTE_ARRAY` | byte-array-backed values, including tested FLBA |
 | `BYTE_STREAM_SPLIT` | `FLOAT`, `DOUBLE`, `INT32`, `INT64`, `FIXED_LEN_BYTE_ARRAY` |
-| `RLE_DICTIONARY`, `PLAIN_DICTIONARY` | typed dictionary lookup |
+| `RLE_DICTIONARY`, `PLAIN_DICTIONARY` | typed dictionary lookup for every physical type except `BOOLEAN` |
 | `RLE` | Boolean values |
 
 An enum constant's existence is not proof that every type/encoding pairing is
-supported. The dispatch branch and tests are the evidence.
+supported. In particular, Hardwood rejects Boolean dictionary construction
+explicitly. The dispatch branch, dictionary factory, and tests together are
+the evidence.
 
 ## Current Hardwood code tour
 

@@ -130,8 +130,9 @@ multi-file read remains attributable.
 ### The multi-file variation
 
 For `openAll(List.of(part0, part1, part2))`, `part0` follows all ten steps
-eagerly. `part1` and `part2` remain unopened until metadata is requested or a
-reader approaches them. `FileMetadataCache` stores one
+eagerly. `part1` and `part2` remain unopened while the caller only uses the
+parent reader's first-file metadata. An indexed metadata request or child
+reader construction admits later loads. `FileMetadataCache` stores one
 `CompletableFuture<PreparedFile>` per admitted file load:
 
 ```text
@@ -144,7 +145,10 @@ The cache shares successes and failures within that parent reader. Reopening a
 new parent creates a new cache and may retry a failed backend. Each
 `PreparedFile` contains that file's `InputFile`, metadata, schema, and row
 groups. Schema compatibility against the first file is performed later by the
-row-group pipeline when the file enters the read.
+row-group pipeline. In the current implementation, child-pipeline
+initialization builds its work list across the files it may need and waits for
+their prepared metadata. Do not infer from the asynchronous cache type that
+next-file footer parsing necessarily overlaps current-file page decoding.
 
 ## Parquet format rules and Hardwood choices
 
@@ -212,8 +216,10 @@ Follow these files in order. All links point at the current checkout.
 8. [`FileMetadataCache`](../../core/src/main/java/dev/hardwood/internal/reader/FileMetadataCache.java)
    owns lazy per-file preparation. Study `registerLoad`, exception unwrapping,
    and close synchronization.
-9. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) is the
-   architecture source of truth for what happens after opening.
+9. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) explains the
+   intended post-open architecture. Current source and tests override stale
+   details in that completed design, including when later-file metadata is
+   forced.
 
 Relevant tests:
 
@@ -305,14 +311,15 @@ You do not need to run the full build for this reading lab. For a real
 contribution, the required verification command is:
 
 ```shell
-timeout 180s ./mvnw verify
+timeout 180s ./mvnw clean verify
 ```
 
 ## Common misconceptions
 
-**“Opening a reader reads every file and every row group.”**  
-Only the first file is opened and parsed eagerly. Later files are prepared on
-demand or by prefetch, and opening does not fetch data pages.
+**“Opening the parent reader reads every file and every row group.”**
+Only the first file is opened and parsed by `openAll`. Later metadata is
+forced by indexed metadata access or child-pipeline initialization. Neither
+parent nor child initialization fetches data pages merely to parse footers.
 
 **“The footer length includes its own four bytes and the final magic.”**  
 It describes the serialized footer body only. Hardwood subtracts

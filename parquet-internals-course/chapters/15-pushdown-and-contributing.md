@@ -351,8 +351,9 @@ Follow the decision from public API to residual evaluation:
 14. [`FlatRowReader`](../../core/src/main/java/dev/hardwood/internal/reader/FlatRowReader.java)
     shows drain-side exact filter masks; other paths use record-level
     evaluation.
-15. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) remains the
-    architecture source of truth.
+15. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) records the
+    intended architecture and rationale. Current source and tests override
+    stale operational details in that completed design.
 
 Tests:
 
@@ -484,20 +485,24 @@ back. State the data-loss risk of masking only the V2-capable sibling.
 
 Hypothetical report:
 
-> For `(optional_int > 10 OR category = "hot")`, a no-index file loses rows
-> where `optional_int` cannot match a page but `category` does.
+> For `SELECT optional_int ... WHERE optional_int > 10 OR category = "hot"`,
+> a no-index file retains the `"hot"` rows but returns `NULL` for
+> `optional_int` values that are actually present and at most 10.
 
 Produce a contribution plan, not a speculative code patch:
 
 1. **Issue/context.** Confirm an issue exists. For the course work itself,
    issue `#986` is the contribution context; a real unrelated bug needs its
-   own issue.
+   own issue. Inspect the repository label set and apply `bug` here, plus any
+   affected-area labels. Use `good first issue` and `help wanted` together
+   only when the work is genuinely suitable for an external newcomer.
 2. **First failing test.** Place a small predicate-extraction unit test showing
    that a leaf under `OR` is not AND-necessary.
 3. **Public regression.** Add a generated fixture with multiple pages,
    optional nulls, inline statistics, no Column Index, and rows matching only
-   the other OR branch. Assert optimized results equal metadata-disabled
-   results.
+   the other OR branch. Assert both selected row identities **and projected
+   `optional_int` values** equal metadata-disabled results; row counts alone
+   would miss the fabricated-null corruption.
 4. **Work assertion.** Instrument `CountingInputFile` or an event only if the
    fix is intended to retain a safe skip; correctness is primary.
 5. **Fix boundary.** Inspect `PageDropPredicates`, not page decoding or row
@@ -512,7 +517,7 @@ Produce a contribution plan, not a speculative code patch:
    ```shell
    timeout 180s ./mvnw -pl core -Dtest=PageFilterEvaluatorTest,MetadataFilteringOptionTest test
    timeout 180s ./mvnw process-sources
-   timeout 180s ./mvnw verify
+   timeout 180s ./mvnw clean verify
    ```
 
    Add the new failure-first class to the focused command once it exists; the
@@ -568,7 +573,7 @@ cannot reproduce or audit it reliably.
 - [ ] Does a failing test sit at the first broken invariant?
 - [ ] Does an I/O optimization test observe bytes/pages as well as values?
 - [ ] Is every binary fixture reproducible under pinned generator versions?
-- [ ] Do focused tests and `timeout 180s ./mvnw verify` pass?
+- [ ] Do focused tests and `timeout 180s ./mvnw clean verify` pass?
 
 ## Quiz
 

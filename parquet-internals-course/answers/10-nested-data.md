@@ -126,13 +126,22 @@ null from empty.
 
 ## 6. Page starting at repetition 1
 
-It is not necessarily corrupt. A repeated top-level record can begin on the
-previous page and continue on this one. The reader needs preceding
-column-chunk/page context to know whether an open record exists.
+For **Data Page V1 without an OffsetIndex**, it is not necessarily corrupt. A
+repeated top-level record can begin on the previous page and continue on this
+one. The reader needs preceding column-chunk/page context to know whether an
+open record exists.
 
 The first raw position of the entire column chunk must start a record with
-repetition 0. A repetition-1 first position is invalid only if there is no
-preceding repeated record to continue.
+repetition 0. A repetition-1 first position on a later V1 page is invalid only
+if there is no preceding repeated record to continue.
+
+For **Data Page V2**, it is corrupt: every V2 page must begin at a row
+boundary, so its first repetition level must be 0. A repeated row may not span
+V2 pages.
+
+It is also invalid when an **OffsetIndex** is present, even for V1. Offset
+index page locations require pages to begin at row boundaries so
+`first_row_index` can describe them correctly.
 
 ## 7. Hardwood layers under `profile.tags`
 

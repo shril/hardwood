@@ -75,7 +75,7 @@ Project rules require Maven commands to use the wrapper and to detect deadlocks
 after 180 seconds. On GNU/Linux, a focused test therefore looks like:
 
 ```shell
-timeout 180s ./mvnw -pl core -Dtest=ParquetMetadataReaderTest test
+timeout 180s ./mvnw -pl core -Dtest=MalformedMetadataFileTest test
 ```
 
 If your platform lacks GNU `timeout`, use an equivalent command runner with a
@@ -89,10 +89,11 @@ The CLI labs assume a built CLI. You can build the project with:
 timeout 180s ./mvnw -Dquick package
 ```
 
-The project-wide verification command, when you later make a contribution, is:
+The public contribution guide asks you to run a clean project-wide
+verification before pushing:
 
 ```shell
-timeout 180s ./mvnw verify
+timeout 180s ./mvnw clean verify
 ```
 
 ## Course map
@@ -173,7 +174,9 @@ separate:
    explains the format alongside that Thrift definition.
 3. Hardwood's completed design
    [`_designs/PARSING_PIPELINE_V2.md`](../_designs/PARSING_PIPELINE_V2.md)
-   describes its intended current reader architecture.
+   records the intended v2 component model and its rationale. Some operational
+   details have since changed, including chunk sizing, validity storage, and
+   reader construction.
 4. Current source and tests are the truth about what this checkout does.
 5. [`ARCHITECTURE.md`](../ARCHITECTURE.md) is useful orientation, but some
    reader class names there are stale. In particular, verify names against

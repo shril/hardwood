@@ -73,11 +73,15 @@ When the consumer does not poll:
 2. drain blocks in timed `publish` offers;
 3. drain no longer removes reorder slots, so `consumePosition` stops;
 4. decode completions fill up to `MAX_INFLIGHT_PAGES` slots;
-5. retriever observes `nextSeq - consumePosition >= MAX_INFLIGHT_PAGES` and
-   parks;
-6. parked retriever no longer calls `PageSource.next()`;
-7. no more decode tasks are submitted and no later demand-driven chunks are
-   requested.
+5. retriever may call `PageSource.next()` for one more `PageInfo`, because the
+   source pull precedes the throttle check;
+6. retriever observes `nextSeq - consumePosition >= MAX_INFLIGHT_PAGES` and
+   parks before assigning a sequence number or submitting that page;
+7. while parked, no further source calls or decode tasks are submitted.
+
+That one pending `PageInfo` may already have caused a demand-driven chunk read.
+The bounded invariant applies to admitted decode tasks and reorder slots; it
+does not move the throttle check ahead of the source pull.
 
 Recycling mode can also block waiting for the consumer to return a free batch
 holder, with the same upstream effect.

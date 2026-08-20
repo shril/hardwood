@@ -103,19 +103,22 @@ lower offsets
 higher offsets
 ```
 
-> **Parquet format rule:** A file begins and ends with the four bytes `PAR1`.
-> Immediately before the closing magic is the four-byte little-endian length
-> of the serialized file metadata; the metadata immediately precedes that
-> length.
+> **Parquet format rule:** An ordinary unencrypted file begins and ends with
+> the four bytes `PAR1`. Immediately before the closing magic is the four-byte
+> little-endian length of the serialized file metadata; the metadata
+> immediately precedes that length. Parquet Modular Encryption replaces both
+> magic strings with `PARE` in encrypted-footer mode.
 
 > **Parquet format rule:** File metadata is written after the column data so a
 > writer can emit data in one forward pass. It records the locations needed by
 > a reader.
 
-The diagram shows the usual chunk order from the specification. The metadata
-model can also refer to chunks in other files using the legacy `file_path`
-field. Do not conclude that every byte belonging to a logical row group is
-necessarily in the same physical file.
+The diagram shows the usual chunk order from the specification. `ColumnChunk`
+also has a legacy `file_path` field used by summary `_metadata` files to point
+at the data files they summarize. The specification does not define arbitrary
+externalized chunks as an ordinary Parquet-file layout, so do not treat this
+field as permission to scatter one normal file's chunks across unrelated
+files.
 
 Also note what the footer does **not** contain. Column indexes, offset indexes,
 and bloom filters are separately serialized byte regions when present. Footer
@@ -340,14 +343,16 @@ pages.
 > **Parquet format rule:** Page-index and bloom-filter byte regions are
 > optional. Their locators are metadata fields; absence is valid.
 
-> **Parquet format rule:** A column chunk may name another file through legacy
-> split-file metadata.
+> **Parquet format rule:** A summary metadata file may use a column chunk's
+> legacy `file_path` to identify the data file being summarized. Arbitrary
+> split-file chunk storage is not a normal Parquet-file layout.
 
 > **Hardwood implementation choice:** `ColumnChunk.chunkStartOffset()` prefers
 > a positive dictionary offset and otherwise returns the data-page offset.
 
-> **Hardwood implementation choice:** Hardwood can inspect metadata for a
-> split-file chunk but refuses to read its data with `requireSameFile()`.
+> **Hardwood implementation choice:** Hardwood can inspect a non-empty
+> `file_path` field but refuses to follow it for a data read with
+> `requireSameFile()`.
 
 > **Hardwood implementation choice:** `RowGroupIterator` turns selected
 > `(file, row group)` pairs into work, and `PageSource` hides whether pages came

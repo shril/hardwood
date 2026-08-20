@@ -34,7 +34,9 @@ It stores the returned buffer in volatile `data`.
 For a standalone handle, `ensureFetched` then starts an asynchronous
 `nextChunk.fetchData()` if a next handle exists. Finally, `slice` computes the
 relative offset with `Math.toIntExact` and returns the requested buffer slice.
-Future accesses use cached `data`.
+Future accesses use cached `data` after that successful fetch. If the
+one-ahead asynchronous fetch of the next handle fails, a later demanded access
+retries it rather than treating the failed prefetch as cached data.
 
 ## 4. Distant indexed pages
 

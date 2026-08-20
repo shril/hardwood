@@ -169,12 +169,18 @@ rep = [0,0,0,0,1]
        four row starts
 ```
 
-A repeated row may span a data-page boundary. The first raw position in the
-column chunk must start with repetition 0, but a later page may start with
-repetition 1 because it continues a row begun on the preceding page. Therefore
-page-local `count(rep == 0)` is not always the complete record count without
-boundary context. V2's `num_rows` helps describe a page; V1 assembly must derive
-boundaries from levels and stream context.
+A repeated row may span a **Data Page V1** boundary when no OffsetIndex is
+present. The first raw position in the column chunk must start with repetition
+0, but a later unindexed V1 page may start with repetition 1 because it
+continues a row begun on the preceding page. Therefore page-local
+`count(rep == 0)` is not always the complete V1 record count without boundary
+context.
+
+**Data Page V2 is stricter:** every V2 page must begin at a row boundary, so
+its first repetition level is 0 and a repeated row cannot continue from the
+preceding V2 page. Its header also carries `num_rows`. A V1 column with an
+OffsetIndex has the same row-boundary requirement because each
+`PageLocation.first_row_index` relies on row-aligned pages.
 
 **Parquet format rule:** `num_values` is the raw level-entry count, not
 necessarily row count or dense value count.
@@ -235,8 +241,9 @@ bitmap means all items at that scope are present.
 - Repetition levels encode continuation at repeated depths.
 - A null/empty container still needs a raw position to preserve row alignment.
 - Only maximum-definition positions consume dense leaf values.
-- A data page can begin with continuation of a repeated record from a previous
-  page.
+- An unindexed Data Page V1 can begin with continuation of a repeated record
+  from a previous page. Data Page V2, and any page covered by an OffsetIndex,
+  must begin at a row boundary.
 
 **Hardwood choice**
 
@@ -358,8 +365,8 @@ present values.
   the raw position count. Hardwood compacts phantom positions.
 - **“Repetition 1 means the second row.”** It means continuation at repeated
   depth 1; repetition 0 starts the next row.
-- **“Every page starts at a row boundary.”** A later page may continue a
-  repeated row.
+- **“Every page starts at a row boundary.”** Data Page V2 and indexed pages do,
+  but a later unindexed Data Page V1 may continue a repeated row.
 - **“STRUCT layers need offsets.”** They do not expand or contract the item
   stream; they carry validity only.
 
@@ -371,7 +378,9 @@ present values.
 - [ ] Assign a semantic meaning to every definition level.
 - [ ] Count raw positions, real leaf slots, dense values, and rows separately.
 - [ ] Treat repetition 0 as a top-level record start.
-- [ ] Preserve continuation when a page begins above repetition 0.
+- [ ] Preserve continuation when an unindexed V1 page begins above repetition 0.
+- [ ] Require a V2 page to begin at repetition 0.
+- [ ] Require pages described by an OffsetIndex to begin at repetition 0.
 - [ ] Use layer validity to distinguish null from empty zero-span containers.
 - [ ] Keep null elements as real slots with cleared leaf validity.
 
@@ -387,8 +396,9 @@ present values.
    the packed hybrid bytes `03 10` and `03 E4 03`.
 5. Derive Hardwood's list offsets, list validity, and leaf validity for the
    example.
-6. A later page starts with repetition level 1. Is it necessarily corrupt?
-   What context is required?
+6. A later Data Page V1 starts with repetition level 1. Is it necessarily
+   corrupt, and what context is required? How do Data Page V2 and the presence
+   of an OffsetIndex change the answer?
 7. An optional `profile` struct contains an optional `tags` list with optional
    elements. Which Hardwood layers lie between root and the element leaf?
 8. In `computeRealView`, which raw definitions from `[0,1,2,3,3]` create real

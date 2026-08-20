@@ -103,9 +103,10 @@ read.
 
 1. **Format rule:** every row group has one column chunk per primitive schema
    leaf.
-2. **Hardwood choice:** Hardwood can parse split-file metadata but rejects a
-   data read when `filePath` is non-empty. Parquet's metadata model permits the
-   legacy layout.
+2. **Hardwood choice:** Hardwood can parse a non-empty `filePath` but rejects a
+   data read that would need to follow it. The Parquet field is used by summary
+   `_metadata` files; it does not define arbitrary externalized chunks as the
+   normal layout of a data file.
 3. **Format rule:** a dictionary page, when present, precedes data pages that
    use it.
 4. **Hardwood choice:** presenting pages to workers through a `PageSource`

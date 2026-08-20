@@ -83,13 +83,14 @@ x > 10 OR y = 2
 ```
 
 an impossible `x > 10` branch does not make the full predicate impossible.
-Rows can still satisfy `y = 2`. Replacing `x` with nulls and then using that
-replacement as authority to omit rows/pages risks suppressing rows that the
-other branch accepts.
+Rows can still satisfy `y = 2`. SQL evaluation itself does not lose such a row:
+`UNKNOWN OR TRUE` is `TRUE`. The danger is that replacing a present `x` with a
+null placeholder fabricates the projected value for a row admitted by `y`.
+Correct row counts can therefore hide corrupt output values.
 
 Inline placeholder extraction therefore uses only leaves necessary to the
 whole predicate—leaves reached through `AND`, not arbitrary leaves under
-`OR`. Exact evaluation must see enough real data to evaluate the disjunction.
+`OR`. A regression must compare projected values as well as selected rows.
 
 ## 7. Testing “correct rows but scanned too much”
 
@@ -105,7 +106,10 @@ observable. A row-reader result alone cannot prove the optimization occurred.
 
 ## 8. Minimum safe fixture-backed workflow
 
-1. Confirm or create the relevant GitHub issue before changing code.
+1. Confirm or create the relevant GitHub issue before changing code. Inspect
+   the repository's label set and apply the relevant labels (`bug` for a
+   defect, plus affected-area labels); use `good first issue` and `help wanted`
+   together only for genuinely suitable newcomer work.
 2. Reproduce the first broken invariant with a focused test and run it to see
    it fail.
 3. If bytes/metadata are required, add a small deterministic recipe to
@@ -120,7 +124,7 @@ observable. A row-reader result alone cannot prove the optimization occurred.
 7. Update `docs/content/` for public API/behavior surfaces and an `_designs/`
    end-state document plus roadmap status for architectural work.
 8. Run focused tests, formatting/source processing, then
-   `timeout 180s ./mvnw verify`.
+   `timeout 180s ./mvnw clean verify`.
 9. Commit under the issue-prefixed message convention with a body explaining
    why the change is needed, and review the generated fixture diff rather than
    treating it as opaque output.

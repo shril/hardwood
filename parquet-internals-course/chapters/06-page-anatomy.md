@@ -278,9 +278,13 @@ timeout 180s ./mvnw -pl core -Dtest=CrcValidationTest test
 
 Read
 [`CrcValidationTest`](../../core/src/test/java/dev/hardwood/CrcValidationTest.java)
-before running it. Identify one test for a valid data page, one for a corrupt
-data page, and the equivalent pair for a dictionary page. Explain why byte
-corruption must be detected before a decoder interprets values.
+before running it. Identify the valid and corrupt data-file cases. Then audit
+the supposed corrupt-dictionary case carefully: adding
+`totalCompressedSize() - 1` to `dictionaryPageOffset()` selects the final byte
+of the whole column chunk, not a proven byte in the dictionary body. Explain
+what page-header parsing or known dictionary-body range would be needed for
+that test to prove dictionary CRC validation. This is an example of checking a
+test's byte geometry instead of trusting its method name and comment.
 
 ## Common misconceptions
 

@@ -152,11 +152,15 @@ For a standalone handle:
 ```text
 page asks handle.slice(...)
   -> ensureFetched()
-       -> readRange(fileOffset, length), once
-       -> cache ByteBuffer
+       -> readRange(fileOffset, length)
+       -> cache the first successful ByteBuffer
        -> asynchronously fetch nextChunk, one ahead
   -> slice relative region
 ```
+
+Successful data is reused. A failed asynchronous prefetch is not cached as a
+successful fetch: when that handle is later demanded, `ensureFetched()` retries
+the `readRange` instead of making a transient prefetch failure permanent.
 
 For a region-backed handle created by cross-column coalescing,
 `ensureFetched()` slices a shared region. The shared region performs the
@@ -209,8 +213,9 @@ strategies for reaching the same bytes.
 - Sequential chunks normally have a 128 MiB ceiling. With a row limit, size is
   estimated from compressed bytes per value, a safety factor, and a 1 MiB
   floor; sufficiently small chunks are read whole.
-- `ChunkHandle` performs thread-safe, at-most-once cached demand fetch and
-  starts one-ahead asynchronous prefetch for a following standalone chunk.
+- `ChunkHandle` thread-safely caches its first successful fetch and starts
+  one-ahead asynchronous prefetch for a following standalone chunk. A failed
+  prefetch may be retried on demand.
 - First reads from adjacent columns may share a `SharedRegion`, but only when
   each plan declares that rewrite coalesce-safe.
 - The page-mask gate is row-group-wide. If any projected column cannot honor
@@ -248,8 +253,9 @@ strategies for reaching the same bytes.
    null placeholder.
 9. [`PageSource`](../../core/src/main/java/dev/hardwood/internal/reader/PageSource.java)
    flattens work-item plans into one per-column sequence.
-10. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) describes
-    the authoritative component boundary and I/O/decode overlap.
+10. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) explains
+    the intended component boundaries and I/O/decode overlap. Use current
+    source and tests for exact chunk-sizing and prefetch behavior.
 
 Tests that expose planning rather than only final values:
 
@@ -392,8 +398,8 @@ dictionary page in the column chunk.
       advance even for dropped pages?
 - [ ] Is dictionary discovery based on the first data-page boundary or first
       scanned page, as appropriate?
-- [ ] Does `ChunkHandle` fetch once, preserve file attribution, and avoid
-      unsafe coalescing?
+- [ ] Does `ChunkHandle` reuse a successful fetch, retry failed prefetch on
+      demand, preserve file attribution, and avoid unsafe coalescing?
 - [ ] Can every projected column honor the same row mask?
 - [ ] Does `PageSource` release each work item exactly once when advancing?
 - [ ] Does the test measure I/O or page scans when the bug is wasted work?

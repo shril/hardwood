@@ -49,9 +49,10 @@ Inside one `ColumnWorker`:
 ```text
 Retriever virtual thread
   PageSource.next()
+  create/update decoder for the returned page
+  park while nextSeq - consumePosition >= N
   assign sequence number
   submit short decode task ------------------------------+
-  park if submitted - consumed >= N                      |
                                                           v
 Shared bounded platform-thread decode pool        decode PageInfo
                                                   store DecodedPage
@@ -250,10 +251,16 @@ If a consumer stops polling:
 3. drain stops consuming reorder slots
 4. consumePosition stops advancing
 5. completed pages occupy the bounded reorder buffer
-6. retriever reaches nextSeq - consumePosition >= MAX_INFLIGHT_PAGES
-7. retriever parks and stops calling PageSource.next()
-8. no new page decode work or demand-driven chunk reads are initiated
+6. retriever may already call PageSource.next() once for the next PageInfo
+7. retriever sees nextSeq - consumePosition >= MAX_INFLIGHT_PAGES and parks
+8. that PageInfo is not assigned or submitted until capacity returns
+9. while parked, no further PageSource calls or decode submissions occur
 ```
+
+The source-before-throttle order means step 6 can resolve one page and may
+initiate its demand-driven chunk read even though the decode window is full.
+The bound is on admitted decode tasks/reorder slots, not on possessing one
+pending `PageInfo`.
 
 In recycling mode, failure to recycle can additionally block the drain while
 it waits for a free holder. The same pressure still propagates upstream.
@@ -289,13 +296,17 @@ columns and moves one row index. `NestedRowReader` uses drain-computed nested
 indexes. `ColumnReaders` coordinates multiple `ColumnReader` instances and
 validates equal record counts.
 
-Closing a child reader:
+Closing any child reader stops its own worker:
 
 - marks/finishes workers;
 - unparks and joins retriever/drain virtual threads;
 - waits for all admitted decode futures;
-- releases iterator-local caches;
 - does not close parent-owned `InputFile`s.
+
+Iterator ownership differs by public entry point. An exclusively owned,
+single `ColumnReader` closes and unregisters its iterator. `RowReader` and
+`ColumnReaders` share an iterator across sibling workers, so closing those
+children leaves that iterator tracked until the parent reader closes.
 
 Waiting for decode futures is essential: a decoder may still hold a mapped or
 direct page buffer. The parent `ParquetFileReader` may close input resources
@@ -357,8 +368,9 @@ only after children are quiescent. Repeated close is guarded and safe.
    documents public array/layer ownership and constructs detaching workers.
 10. [`ColumnReaders`](../../core/src/main/java/dev/hardwood/reader/ColumnReaders.java)
     coordinates multiple column cursors.
-11. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) is the
-    architecture source of truth for thread roles and back-pressure.
+11. [`PARSING_PIPELINE_V2`](../../_designs/PARSING_PIPELINE_V2.md) explains
+    the intended thread-role and back-pressure design. Treat current source
+    and tests as authoritative for exact ordering and data structures.
 
 Tests:
 
@@ -456,16 +468,20 @@ all immediate value assertions still passed.
 ### 6. Verify close ownership
 
 ```shell
-timeout 180s ./mvnw -pl core -Dtest=RowReaderCloseIdempotencyTest test
+timeout 180s ./mvnw -pl core \
+  -Dtest=RowReaderCloseIdempotencyTest,IteratorTrackingTest test
 ```
 
-Trace the order:
+Trace the shutdown order:
 
 ```text
 child close -> worker done -> unpark -> joins -> decode futures settle
-            -> iterator cache release
 parent close -> InputFile close
 ```
+
+Then compare iterator ownership in `IteratorTrackingTest`: an exclusively
+owned single-column iterator is unregistered on child close, while row-reader
+and multi-column shared iterators stay tracked until parent close.
 
 Identify the failure mode if parent close released a memory mapping before
 decode futures settled.
